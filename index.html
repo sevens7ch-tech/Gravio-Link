@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!--
+    Copyright © 2026 Christian Haake. Alle Rechte vorbehalten.
+    Dieser Quellcode ist vertraulich und darf ohne ausdrückliche Genehmigung
+    weder kopiert noch weitergegeben werden. Zuwiderhandlungen werden abgemahnt.
+
+    Link-Seite: öffnet einen Auftrag aus dem Gravio-Webclient in der Gravio-App.
+    Die Auftragsdaten stehen nur hinter dem #-Zeichen und werden nicht an den Server gesendet.
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Auftrag in Gravio öffnen</title>
+<style>
+  :root { --bg: #0c0f0d; --panel: #161b18; --line: #2b332e; --ink: #ecf1ee; --muted: #98a59e; --accent: #34d399; --accent-ink: #052e1f; --warn: #fbbf24; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    display: grid; place-items: center; }
+  main { width: 100%; max-width: 420px; display: grid; gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 10px; }
+  h1 { font-size: 22px; margin: 0; line-height: 1.2; }
+  .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li b { display: block; }
+  li span { color: var(--muted); font-size: 13.5px; }
+  a.btn { display: block; text-align: center; background: var(--accent); color: var(--accent-ink); text-decoration: none; font-weight: 700; font-size: 17px; padding: 16px; border-radius: 12px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+  .warn { color: var(--warn); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <span class="eyebrow">Gravio · Auftrag vom Disponenten</span>
+    <h1 id="title">Auftrag</h1>
+    <ul id="legs"></ul>
+  </div>
+  <a class="btn" id="open" href="#">In Gravio öffnen</a>
+  <p class="hint" id="hint">Gravio übernimmt den Auftrag ins Formular. Falls sich nichts tut: neueste Gravio-Version installieren (ab 1.1.35).</p>
+  <p class="hint warn" id="desktop" hidden>Diesen Link bitte auf dem Android-Handy mit Gravio öffnen.</p>
+  <p class="hint warn" id="error" hidden>Der Link ist unvollständig. Bitte den Disponenten bitten, den Auftrag neu zu senden.</p>
+</main>
+<script>
+(async () => {
+  const $ = id => document.getElementById(id);
+  const d = new URLSearchParams(location.hash.slice(1)).get('d') || '';
+  if (!/^[zj][A-Za-z0-9_-]+$/.test(d)) { $('error').hidden = false; $('open').hidden = true; $('hint').hidden = true; $('title').textContent = 'Kein Auftrag im Link'; return; }
+
+  // Kurzübersicht anzeigen (nur lesen, nichts wird gesendet)
+  try {
+    const b64 = d.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+    let bytes = Uint8Array.from(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)), c => c.charCodeAt(0));
+    if (d[0] === 'z') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    const o = JSON.parse(new TextDecoder().decode(bytes));
+    $('title').textContent = o.orderNumber ? 'Auftrag ' + o.orderNumber : 'Neuer Auftrag';
+    (o.tours || []).forEach(t => {
+      const li = document.createElement('li');
+      const b = document.createElement('b'); b.textContent = t.customer || 'Kunde offen';
+      const s = document.createElement('span'); s.textContent = [t.loadCity || t.loadStreet, t.unloadCity || t.unloadStreet].filter(Boolean).join(' → ');
+      li.append(b, s); $('legs').append(li);
+    });
+  } catch (e) { /* Übersicht ist nur Beiwerk */ }
+
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const appUrl = 'gravio://auftrag?d=' + d;
+  const intentUrl = 'intent://auftrag?d=' + d + '#Intent;scheme=gravio;package=de.haake.gravio;end';
+  $('open').href = isAndroid ? intentUrl : appUrl;
+  if (!isAndroid) { $('desktop').hidden = false; return; }
+  // direkt versuchen; der Knopf bleibt als Rückfall
+  setTimeout(() => { location.href = intentUrl; }, 300);
+})();
+</script>
+</body>
+</html>
